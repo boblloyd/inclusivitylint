@@ -1,10 +1,9 @@
 from __future__ import print_function
 import re
 import sys
-import argparse
-import configparser
-import os
 from collections import OrderedDict
+from blocklint.args import Args
+
 if sys.version_info >= (3, 5):
     from typing import Dict, Set, Union
 
@@ -26,7 +25,7 @@ ignore_class = '[^a-zA-Z0-9]'
 
 
 def main(args=None):
-    args = get_args(args)
+    args = Args().process_args(args)
     word_checkers = generate_re(args)
     total_issues = 0
 
@@ -61,108 +60,6 @@ def process_file(input_file, file_name, word_checkers, end_pos):
     except UnicodeDecodeError:
         pass
     return num_matched
-
-
-def get_args(args=None):
-    parser = argparse.ArgumentParser(description='Lint block-listed words')
-    parser.add_argument('files', nargs='*',
-                        help='Files or directories to lint, default all '
-                        'files in current directory')
-    parser.add_argument('--blocklist', help='Comma separated list of words '
-                        'to lint in any context, with possibly special '
-                        'characters between, case insensitive; '
-                        'DEFAULT to master,slave,whitelist,blacklist')
-    parser.add_argument('--wordlist', help='Comma separated list of words '
-                        'to lint as whole words, with possibly special '
-                        'characters between, case insensitive')
-    parser.add_argument('--exactlist', help='Comma separated list of words '
-                        'to lint as whole words exactly as entered')
-    parser.add_argument('-e', '--end-pos', action='store_true',
-                        help='Show the end position of a match in output')
-    parser.add_argument('--stdin', action='store_true',
-                        help='Use stdin as input instead of file list')
-    parser.add_argument("--max-issue-threshold", type=int, required=False,
-                        help='Cause non-zero exit status of more than this '
-                        'many issues found')
-    parser.add_argument("--skip-files", type=str,
-                        help='Paths to files that should _not_ be checked by '
-                        'blocklint, even if within a checked directory')
-    args = vars(parser.parse_args(args))
-
-    config_paths = [
-        os.path.join(os.path.expanduser('~'), '.blocklint'),
-        './.blocklint',
-        './setup.cfg',
-        './tox.ini',
-    ]
-    present_config_files = [
-        path for path in config_paths if os.path.exists(path)
-    ]
-    config = configparser.ConfigParser()
-    for path in present_config_files:
-        config.read(path)
-    config_settings = {}  # type: Dict[str, Union[str, bool, int, Set[str]]]
-    if 'blocklint' in config:
-        config_settings = dict(config['blocklint'])
-    for key in args:
-        if args[key] is None and key in config_settings:
-            if key in ['end_pos', 'stdin']:
-                config_settings[key] = config.getboolean('blocklint', key)
-            if key in ['max_issue_threshold']:
-                config_settings[key] = config.getint('blocklint', key)
-            if key in ['skip_files']:
-                config_settings[key] = config.get('blocklint', key)
-            args[key] = config_settings[key]
-    if args['skip_files'] is not None:
-        # config files have multiline args
-        skip_files = args['skip_files'].split('\n')
-        skip_files = [path for line in skip_files
-                      for path in line.split(',')]
-        args['skip_files'] = set(skip_files)
-
-    # from least to most restrictive
-    wordlists = ('blocklist', 'wordlist', 'exactlist')
-
-    # TODO add in checks for config files
-    if args['blocklist'] is None and \
-            args['wordlist'] is None and \
-            args['exactlist'] is None:
-        args['blocklist'] = 'master,slave,whitelist,blacklist'
-
-    for wordlist in wordlists:
-        if args[wordlist] is not None:
-            # split CSV, remove duplicates
-            args[wordlist] = set(args[wordlist].split(','))
-        else:
-            args[wordlist] = set()
-
-    # remove repeats across lists from least to most restrictive
-    for i, wordlist in enumerate(wordlists):
-        for other in wordlists[i+1:]:
-            args[other] -= args[wordlist]
-
-        # sort for deterministic output
-        args[wordlist] = sorted(args[wordlist])
-
-    # parse files argument into individual files
-    if not args['files']:
-        args['files'] = [os.getcwd()]
-
-    files = []
-    for file in args['files']:
-        if os.path.isdir(file):
-            files += [os.path.join(file, f) for f in os.listdir(file)
-                      if os.path.isfile(os.path.join(file, f))]
-        # isabs detects pipes
-        elif os.path.isfile(file) or os.path.isabs(file):
-            files.append(file)
-    if args['skip_files'] is not None:
-        files = [file for file in files if file not in args['skip_files']]
-
-    args['files'] = files
-
-    return args
-
 
 def generate_re(args):
     result = OrderedDict()

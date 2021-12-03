@@ -3,6 +3,7 @@ import re
 import sys
 
 import blocklint.main as bl
+from blocklint.args import Args
 
 # this is hacky, but only for testing...
 try:  # python 2
@@ -58,8 +59,12 @@ def test_main_max_issues(mocker):
 
 def test_get_args_wordlists(mocker):
     mocker.patch('os.getcwd', return_value='')
+    arg_obj = Args()
     # defaults
-    args = bl.get_args([])
+    args = arg_obj.process_args([])
+    assert arg_obj.blocklist == ['blacklist', 'master', 'slave', 'whitelist']
+    assert arg_obj.exactlist == []
+    assert arg_obj.wordlist == []
     assert args == {
         'blocklist': ['blacklist', 'master', 'slave', 'whitelist'],
         'exactlist': [],
@@ -71,7 +76,10 @@ def test_get_args_wordlists(mocker):
         'wordlist': []}
 
     # set each list in turn
-    args = bl.get_args('--stdin --blocklist test'.split())
+    args = arg_obj.process_args('--stdin --blocklist test'.split())
+    assert arg_obj.blocklist == ['test']
+    assert arg_obj.exactlist == []
+    assert arg_obj.wordlist == []
     assert args == {
         'blocklist': ['test'],
         'exactlist': [],
@@ -82,7 +90,10 @@ def test_get_args_wordlists(mocker):
         'max_issue_threshold': None,
         'wordlist': []}
 
-    args = bl.get_args('--exactlist test,test2'.split())
+    args = arg_obj.process_args('--exactlist test,test2'.split())
+    assert arg_obj.blocklist == []
+    assert arg_obj.exactlist == ['test', 'test2']
+    assert arg_obj.wordlist == []
     assert args == {
         'blocklist': [],
         'exactlist': ['test', 'test2'],
@@ -93,7 +104,10 @@ def test_get_args_wordlists(mocker):
         'max_issue_threshold': None,
         'wordlist': []}
 
-    args = bl.get_args('--wordlist test2'.split())
+    args = arg_obj.process_args('--wordlist test2'.split())
+    assert arg_obj.blocklist == []
+    assert arg_obj.exactlist == []
+    assert arg_obj.wordlist == ['test2']
     assert args == {
         'blocklist': [],
         'exactlist': [],
@@ -105,9 +119,12 @@ def test_get_args_wordlists(mocker):
         'wordlist': ['test2']}
 
     # remove duplicate words
-    args = bl.get_args(('--end-pos --blocklist test,test '
+    args = arg_obj.process_args(('--end-pos --blocklist test,test '
                         '--exactlist test2,test2 '
                         '--wordlist test3,test3').split())
+    assert arg_obj.blocklist == ['test']
+    assert arg_obj.exactlist == ['test2']
+    assert arg_obj.wordlist == ['test3']
     assert args == {
         'blocklist': ['test'],
         'exactlist': ['test2'],
@@ -120,9 +137,12 @@ def test_get_args_wordlists(mocker):
 
     # remove words from restrictive lists that are in more permissive ones
     # e.g. blocklist will match words and exact
-    args = bl.get_args(('-e --blocklist test '
+    args = arg_obj.process_args(('-e --blocklist test '
                         '--exactlist test '
                         '--wordlist test').split())
+    assert arg_obj.blocklist == ['test']
+    assert arg_obj.exactlist == []
+    assert arg_obj.wordlist == []
     assert args == {
         'blocklist': ['test'],
         'exactlist': [],
@@ -133,9 +153,12 @@ def test_get_args_wordlists(mocker):
         'max_issue_threshold': None,
         'wordlist': []}
 
-    args = bl.get_args(('--blocklist test1 '
+    args = arg_obj.process_args(('--blocklist test1 '
                         '--exactlist test '
                         '--wordlist test').split())
+    assert arg_obj.blocklist == ['test1']
+    assert arg_obj.exactlist == []
+    assert arg_obj.wordlist == ['test']
     assert args == {
         'blocklist': ['test1'],
         'exactlist': [],
@@ -146,13 +169,16 @@ def test_get_args_wordlists(mocker):
         'max_issue_threshold': None,
         'wordlist': ['test']}
 
-    args = bl.get_args(('--blocklist test1 '
+    args = arg_obj.process_args(('--blocklist test1 '
                         '--skip-files tests/sample_files/test.py,'
                         'tests/sample_files/test.txt '
                         'files tests/sample_files/test.py '
                         'tests/sample_files/test.cc').split())
 
     # Test skip_files filter
+    assert arg_obj.blocklist == ['test1']
+    assert arg_obj.exactlist == []
+    assert arg_obj.wordlist == []
     assert args == {
         'blocklist': ['test1'],
         'exactlist': [],
